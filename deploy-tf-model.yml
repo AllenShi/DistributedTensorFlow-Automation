@@ -7,7 +7,7 @@
   tasks:
 
     - name: Checkout Cognitive tensorflow repo
-      git: repo=git@github.ibm.com:Cognitive-OXR/tensorflow.git version=master dest={{ src_repo_root }}/tensorflow
+      git: repo=git@github.io:Cognitive-OXR/tensorflow.git version=master dest={{ src_repo_root }}/tensorflow
 
 - hosts: tensorflow
   remote_user: root
