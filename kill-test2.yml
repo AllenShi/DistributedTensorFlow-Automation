@@ -1,0 +1,10 @@
+---
+- hosts: tester
+  remote_user: root
+  vars:
+    target_processes: (tensorboard|python)
+
+  tasks:
+
+    - name: Get running processes
+      shell: "ps -ef | grep -v grep | egrep '{{ target_processes }}' | awk '{print $2}' | xargs kill"

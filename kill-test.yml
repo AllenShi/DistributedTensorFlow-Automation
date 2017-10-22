@@ -1,0 +1,26 @@
+---
+- hosts: tester
+  remote_user: root
+  vars:
+    target_processes: (tensorboard|python)
+
+  tasks:
+
+    - name: Get running processes
+      shell: "ps -ef | grep -v grep | egrep \"{{ target_processes }}\" | awk '{print $2}'"
+      register: running_processes
+
+    - name: Kill running processes
+      shell: "kill {{ item }}"
+      with_items: "{{ running_processes.stdout_lines }}"
+
+    - wait_for:
+        path: "/proc/{{ item }}/status"
+        state: absent
+      with_items: "{{ running_processes.stdout_lines }}"
+      ignore_errors: yes
+      register: killed_processes
+
+    - name: Force kill stuck processes
+      shell: "kill -9 {{ item }}"
+      with_items: "{{ killed_processes.results | select('failed') | map(attribute='item') | list }}"

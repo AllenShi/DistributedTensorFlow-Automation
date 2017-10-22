@@ -1,0 +1,107 @@
+---
+- hosts: localhost
+  connection: local
+  vars:
+    src_repo_root: /home/ansible/repositories/Cognitive-OXR/
+
+  tasks:
+
+    - name: Checkout Cognitive tensorflow repo
+      git: repo=git@github.ibm.com:Cognitive-OXR/tensorflow.git version=master dest={{ src_repo_root }}/tensorflow
+
+- hosts: tester
+  remote_user: root
+  vars:
+    # created with:
+    # python -c 'import crypt; print crypt.crypt("This is my Password", "passw0rd")'
+    # password:  paPMDpWgzrbXc
+    work_home: /home/deeplearning
+    work_spaces: /home/deeplearning/projects
+    target_processes: (tensorboard|python)
+
+  tasks:
+
+    - name: Create deep learning home directory
+      file: path={{ work_spaces }} state=directory
+
+    - name: Copy deployment script file
+      copy:
+        dest: "{{ work_home }}/scripts/"
+        src: "{{ item }}"
+        mode: a+x
+      with_fileglob:
+        - "./*.sh"
+
+    - name: Checkout tensorflow model repo
+      git: repo=https://github.com/tensorflow/models.git version=master dest={{ work_spaces }}/Google/tensorflow/models
+
+    - name: This command will compile Protobuf libraries 
+      shell: protoc object_detection/protos/*.proto --python_out=. > /tmp/compile-tf-protobuf-test.log 2>&1
+      args:
+        chdir: "{{ work_spaces }}/Google/tensorflow/models/research"
+
+    - name: Copy Cognitive OXR project
+      copy:
+        dest: "{{ work_spaces }}/Cognitive-OXR/"
+        src: /home/ansible/repositories/Cognitive-OXR/tensorflow
+
+    - name: Copy tesorflow pre-trained models
+      copy:
+        dest: "{{ work_spaces }}/Cognitive-OXR/tensorflow/model_ckpt/"
+        src: "{{ item }}"
+      with_fileglob:
+        # - /var/lib/tensorflow/models/object_detection/ssd_inception_v2_coco_11_06_2017/* 
+        - /var/lib/tensorflow/models/object_detection/faster_rcnn_resnet101_coco_11_06_2017/*
+
+    - name: Copy tensorflow record for Cognitive OXR
+      copy:
+        dest: "{{ work_spaces }}/Cognitive-OXR/tensorflow/tf_record/"
+        src: "{{ item }}"
+      with_fileglob:
+        - /var/lib/Cognitive-OXR/tensorflow/tfrecord/*.record 
+
+    - name: Link the target tensorflow train record, which can be changed as you want
+      file:
+        src: "{{ work_spaces }}/Cognitive-OXR/tensorflow/tf_record/marmot-small.record"
+        dest: "{{ work_spaces }}/Cognitive-OXR/tensorflow/tf_record/marmot.record"
+        state: link
+
+    - name: Link the target tensorflow evaluation record, which can be changed as you want
+      file:
+        src: "{{ work_spaces }}/Cognitive-OXR/tensorflow/tf_record/marmot-small-eval.record"
+        dest: "{{ work_spaces }}/Cognitive-OXR/tensorflow/tf_record/marmot-eval.record"
+        state: link
+
+    - name: Get running processes
+      shell: "ps -ef | grep -v grep | egrep '{{ target_processes }}' | awk '{print $2}'"
+      register: running_processes
+
+    - name: Kill running processes
+      shell: "kill {{ item }}"
+      with_items: "{{ running_processes.stdout_lines }}"
+
+    - wait_for:
+        path: "/proc/{{ item }}/status"
+        state: absent
+      with_items: "{{ running_processes.stdout_lines }}"
+      ignore_errors: yes
+      register: killed_processes
+
+    - name: Force kill stuck processes
+      shell: "kill -9 {{ item }}"
+      with_items: "{{ killed_processes.results | select('failed') | map(attribute='item') | list }}"
+
+    - name: This command will start train on tensorflow master
+      shell: "nohup {{ work_home }}/scripts/start-tf-master-train-test.sh > /tmp/start-tf-master-train-test.log 2>&1 &"
+
+    - name: This command will start evaluate on tensorflow master
+      shell: "nohup {{ work_home }}/scripts/start-tf-master-evaluate-test.sh > /tmp/start-tf-master-evaluate-test.log 2>&1 &"
+
+    - name: This command will start tensorboard on tensorflow master
+      shell: "nohup {{ work_home }}/scripts/start-tf-master-board-test.sh > /tmp/start-tf-master-board-test.log 2>&1 &"
+
+    - name: This command will start tensorflow parameter server
+      shell: "nohup {{ work_home }}/scripts/start-tf-ps-test.sh > /tmp/start-tf-ps-test.log 2>&1 &"
+
+    - name: This command will start tensorflow worker
+      shell: "nohup {{ work_home }}/scripts/start-tf-worker-test.sh > /tmp/start-tf-worker-test.log 2>&1 &"

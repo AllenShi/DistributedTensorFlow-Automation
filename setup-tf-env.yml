@@ -1,0 +1,44 @@
+---
+- hosts: tensorflow
+  remote_user: root
+  vars:
+    # created with:
+    # python -c 'import crypt; print crypt.crypt("This is my Password", "passw0rd")'
+    # password:  paPMDpWgzrbXc
+    work_home: /home/deeplearning
+
+  tasks:
+
+    # - name: Create one dedicated group
+    #  group:
+    #    name: tensorflow
+    #    state: present
+
+    # - name: Create one dedicated user
+    #  user:
+    #    name: tensorflow
+    #    password: "{{ password }}"
+    #    group: tensorflow
+    #    shell: /bin/bash
+    #    groups: sudo, users
+    #    append: yes
+
+    - name: Create deep learning home directory
+      file: path={{ work_home }} state=directory
+
+    - name: Copy deployment script file
+      copy:
+        dest: "{{ work_home }}/scripts/"
+        src: "setup-tf-env.sh" 
+        mode: a+x
+
+    - name: Install tensorflow dependencies
+      apt:  name={{ item }} state=latest update_cache=yes force=yes
+      with_items:
+        - python3-pip
+        - python3-dev
+        - python-virtualenv
+        - protobuf-compiler 
+
+    - name: This command will setup virtual environment for python3 with tensorflow
+      shell: "{{ work_home }}/scripts/setup-tf-env.sh >> /tmp/setup-tf-env.log"
